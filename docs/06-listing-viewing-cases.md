@@ -142,8 +142,13 @@ Many columns are available, including:
 - `sPersonAssignedTo`: Person the case is assigned to
 - `ixPersonAssignedTo`: Person ID the case is assigned to
 - `events`: All events for the case
-- `latestEvent`: Just the latest event
 - `tags`: Tags associated with the case
+
+> **Verified against a live instance.** FogBugz silently drops column names it
+> does not recognize -- no error, no warning, the key is simply absent. Two names
+> that appear in FogBugz's own documentation are **not** honored by the JSON API:
+> `latestEvent` and `sPersonOpenedBy` (use `ixPersonOpenedBy`). The authoritative
+> list of columns this server accepts lives in `src/api/columns.ts`.
 
 ## Events in Results
 
@@ -171,7 +176,9 @@ When including `events` in the `cols` parameter, you'll receive detailed event i
 ]
 ```
 
-For just the latest event, use `latestEvent` instead.
+There is no working "latest event only" column; fetch `events` and take the last
+entry. Note that `s` is frequently empty on events that only record a field
+change -- the substance is in `sChanges` in that case, so read both.
 
 ## Example with curl
 
