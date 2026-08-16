@@ -10,7 +10,7 @@ In the XML API, several commands are available to list different types of entiti
 - `listCategories`: List all categories
 - `listPriorities`: List all priorities
 - `listPeople`: List people in the system
-- `listStatus`: List all status values
+- `listStatuses`: List all status values (the XML API's `listStatus` is **not** accepted by the JSON API -- it returns "Error 27: No such API command")
 - `listFixFors`: List milestones
 - `listMailboxes`: List accessible mailboxes
 - `listWikis`: List wikis
@@ -235,7 +235,7 @@ The JSON API provides the same commands for listing FogBugz entities, with the s
 
 ```json
 {
-  "cmd": "listStatus",
+  "cmd": "listStatuses",
   "token": "your_api_token",
   "ixCategory": 1,  // Optional: Limit results to statuses within this category
   "fResolved": false // Optional: Set to true to only include resolved statuses
@@ -437,7 +437,7 @@ async function listEntities(apiUrl, token, entityType, params = {}) {
       'categories': 'listCategories',
       'priorities': 'listPriorities',
       'people': 'listPeople',
-      'statuses': 'listStatus',
+      'statuses': 'listStatuses',
       'milestones': 'listFixFors',
       'mailboxes': 'listMailboxes',
       'wikis': 'listWikis',

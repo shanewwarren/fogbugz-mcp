@@ -118,14 +118,32 @@ async function startMcpServer(api: FogBugzApi) {
           case 'fogbugz_update_case':
             content = await handlers.updateCase(api, args);
             break;
+          case 'fogbugz_add_comment':
+            content = await handlers.addComment(api, args);
+            break;
           case 'fogbugz_assign_case':
             content = await handlers.assignCase(api, args);
+            break;
+          case 'fogbugz_resolve_case':
+            content = await handlers.resolveCase(api, args);
+            break;
+          case 'fogbugz_close_case':
+            content = await handlers.closeCase(api, args);
+            break;
+          case 'fogbugz_reopen_case':
+            content = await handlers.reopenCase(api, args);
+            break;
+          case 'fogbugz_get_case':
+            content = await handlers.getCase(api, args);
             break;
           case 'fogbugz_list_my_cases':
             content = await handlers.listUserCases(api, args);
             break;
           case 'fogbugz_search_cases':
             content = await handlers.searchCases(api, args);
+            break;
+          case 'fogbugz_list_metadata':
+            content = await handlers.listMetadata(api, args);
             break;
           case 'fogbugz_get_case_link':
             content = await handlers.getCaseLink(api, args);

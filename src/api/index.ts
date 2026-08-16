@@ -13,7 +13,11 @@ import {
   EditCaseParams,
   SearchParams,
   FileAttachment,
-  CreateProjectParams
+  CreateProjectParams,
+  CaseActionParams,
+  ListPeopleParams,
+  FogBugzStatus,
+  FogBugzCategory
 } from './types';
 
 // Interface for the JSON payload sent to FogBugz API
@@ -31,6 +35,8 @@ export class FogBugzApi {
   private baseUrl: string;
   private apiKey: string;
   private apiEndpoint: string;
+  /** Memoized `listStatus` result -- status IDs are stable for a process. */
+  private statusCache: FogBugzStatus[] | null = null;
 
   /**
    * Create a new FogBugz API client
@@ -170,9 +176,88 @@ export class FogBugzApi {
   /**
    * Get a list of all people (users)
    */
-  async listPeople(): Promise<FogBugzPerson[]> {
-    const response = await this.request<{ people: FogBugzPerson[] }>('listPeople');
+  async listPeople(params: ListPeopleParams = {}): Promise<FogBugzPerson[]> {
+    const response = await this.request<{ people: FogBugzPerson[] }>('listPeople', params);
     return response.people;
+  }
+
+  /**
+   * Get a list of statuses, optionally scoped to a category.
+   *
+   * The command is `listStatuses`, not the `listStatus` given in docs/08-lists.md
+   * -- the singular form returns "Error 27: No such API command" on a live instance.
+   */
+  async listStatuses(ixCategory?: number, fResolved?: boolean): Promise<FogBugzStatus[]> {
+    const params: Record<string, any> = {};
+    if (ixCategory !== undefined) params.ixCategory = ixCategory;
+    if (fResolved !== undefined) params.fResolved = fResolved;
+
+    const response = await this.request<{ statuses: FogBugzStatus[] }>('listStatuses', params);
+    return response.statuses;
+  }
+
+  /**
+   * Get a list of all categories
+   */
+  async listCategories(): Promise<FogBugzCategory[]> {
+    const response = await this.request<{ categories: FogBugzCategory[] }>('listCategories');
+    return response.categories;
+  }
+
+  /**
+   * Translate a status name like "Resolved (Fixed)" into its ixStatus.
+   *
+   * Status IDs differ per category, so an optional category scopes the match.
+   * Matching is case-insensitive; an exact match wins over a partial one.
+   */
+  async resolveStatusId(name: string, ixCategory?: number): Promise<number> {
+    if (!this.statusCache) {
+      this.statusCache = await this.listStatuses();
+    }
+
+    const target = name.trim().toLowerCase();
+    const inScope = this.statusCache.filter(
+      (s) => ixCategory === undefined || s.ixCategory === ixCategory
+    );
+
+    const exact = inScope.find((s) => s.sStatus.toLowerCase() === target);
+    if (exact) return exact.ixStatus;
+
+    const partial = inScope.filter((s) => s.sStatus.toLowerCase().includes(target));
+    if (partial.length === 1) return partial[0].ixStatus;
+
+    const available = inScope.map((s) => `"${s.sStatus}" (${s.ixStatus})`).join(', ');
+    if (partial.length > 1) {
+      throw new Error(
+        `Status "${name}" is ambiguous -- it matches ${partial.length} statuses. ` +
+          `Use an exact name or a numeric ixStatus. Available: ${available}`
+      );
+    }
+    throw new Error(`Unknown status "${name}". Available: ${available}`);
+  }
+
+  /**
+   * Resolve a case. `ixStatus` picks which resolved state to move it into.
+   */
+  async resolveCase(params: CaseActionParams): Promise<FogBugzCase> {
+    const response = await this.request<{ case: FogBugzCase }>('resolve', params);
+    return response.case;
+  }
+
+  /**
+   * Close a case. In FogBugz this is a distinct step after resolving.
+   */
+  async closeCase(params: CaseActionParams): Promise<FogBugzCase> {
+    const response = await this.request<{ case: FogBugzCase }>('close', params);
+    return response.case;
+  }
+
+  /**
+   * Reopen a previously resolved or closed case.
+   */
+  async reopenCase(params: CaseActionParams): Promise<FogBugzCase> {
+    const response = await this.request<{ case: FogBugzCase }>('reopen', params);
+    return response.case;
   }
 
   /**
@@ -254,4 +339,5 @@ export class FogBugzApi {
   }
 }
 
-export * from './types'; 
+export * from './types';
+export * from './columns';
