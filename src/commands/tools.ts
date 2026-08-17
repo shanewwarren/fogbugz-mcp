@@ -183,6 +183,29 @@ export const searchCasesTool: Tool = {
   },
 };
 
+// Tool: Get a single case with its full event/comment history
+export const getCaseTool: Tool = {
+  name: 'fogbugz_get_case',
+  description:
+    'Gets a single FogBugz case with full detail, including its event/comment history (who changed status, resolution notes, and discussion). Use this to understand what a case is really about and what a prior "fix" actually did.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      caseId: {
+        type: 'number',
+        description: 'The ID of the case to fetch',
+      },
+      maxEvents: {
+        type: 'number',
+        description:
+          'Optional cap on number of events returned (keeps the most recent). Omit for full history.',
+        optional: true,
+      },
+    },
+    required: ['caseId'],
+  },
+};
+
 // Tool: Get a direct link to a FogBugz case
 export const getCaseLinkTool: Tool = {
   name: 'fogbugz_get_case_link',
@@ -237,6 +260,7 @@ export const fogbugzTools = [
   assignCaseTool,
   listUserCasesTool,
   searchCasesTool,
+  getCaseTool,
   getCaseLinkTool,
   createProjectTool,
 ]; 

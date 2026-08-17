@@ -222,6 +222,36 @@ export class FogBugzApi {
   }
 
   /**
+   * Get a single case with full detail, including its event/comment history.
+   * FogBugz returns the narrative history via the `events` column on `search`.
+   */
+  async getCase(caseId: number, cols?: string[]): Promise<FogBugzCase | null> {
+    const defaultCols = [
+      'ixBug',
+      'sTitle',
+      'sStatus',
+      'sPriority',
+      'sProject',
+      'sArea',
+      'sFixFor',
+      'sPersonAssignedTo',
+      'sPersonOpenedBy',
+      'dtOpened',
+      'dtResolved',
+      'dtClosed',
+      'sLatestTextSummary',
+      'events',
+    ];
+    const response = await this.request<{ cases: FogBugzCase[] }>('search', {
+      q: String(caseId),
+      cols: cols && cols.length ? cols : defaultCols,
+      max: 1,
+    });
+    const cases = response.cases || [];
+    return cases.length > 0 ? cases[0] : null;
+  }
+
+  /**
    * Get a direct link to a case
    */
   getCaseLink(caseId: number): string {
