@@ -33,7 +33,26 @@ export interface FogBugzEvent {
   dt: string;
   sPerson: string;
   ixPerson: number;
+  rgAttachments?: FogBugzAttachment[] | { attachment?: FogBugzAttachment | FogBugzAttachment[] };
   [key: string]: any;
+}
+
+/**
+ * An attachment on an event. `sURL` is a relative FogBugz download path
+ * (e.g. `default.asp?pg=pgDownload&pgType=pgFile&ixBugEvent=...&ixAttachment=...`)
+ * that requires the API token appended to actually fetch the bytes. It is
+ * returned WITHOUT the token so it can be surfaced safely; downloading is done
+ * server-side via `FogBugzApi.downloadAttachment`.
+ */
+export interface FogBugzAttachment {
+  sFileName?: string;
+  sURL?: string;
+  [key: string]: any;
+}
+
+export interface DownloadedAttachment {
+  contentType: string;
+  data: Buffer;
 }
 
 export interface FogBugzProject {
