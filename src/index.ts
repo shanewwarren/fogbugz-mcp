@@ -127,6 +127,9 @@ async function startMcpServer(api: FogBugzApi) {
           case 'fogbugz_search_cases':
             content = await handlers.searchCases(api, args);
             break;
+          case 'fogbugz_get_case':
+            content = await handlers.getCase(api, args);
+            break;
           case 'fogbugz_get_case_link':
             content = await handlers.getCaseLink(api, args);
             break;

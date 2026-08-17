@@ -270,6 +270,75 @@ export async function searchCases(api: FogBugzApi, args: any): Promise<string> {
 }
 
 /**
+ * Normalize the FogBugz `events` payload into a flat array. Depending on the
+ * FogBugz version the JSON API returns either a bare array or a
+ * `{ count, event: [...] }` wrapper (and a single event may not be an array).
+ */
+function normalizeEvents(events: any): any[] {
+  if (!events) return [];
+  const raw = Array.isArray(events) ? events : (events.event ?? events);
+  if (!raw) return [];
+  return Array.isArray(raw) ? raw : [raw];
+}
+
+/**
+ * Gets a single FogBugz case with its full event/comment history.
+ */
+export async function getCase(api: FogBugzApi, args: any): Promise<string> {
+  const { caseId, maxEvents } = args;
+
+  try {
+    const c = await api.getCase(caseId);
+    if (!c) {
+      return JSON.stringify({ error: `Case #${caseId} not found` });
+    }
+
+    let events = normalizeEvents(c.events);
+    // Events come oldest-first; when capping, keep the most recent ones.
+    const truncated =
+      typeof maxEvents === 'number' && maxEvents > 0 && events.length > maxEvents;
+    if (truncated) {
+      events = events.slice(events.length - maxEvents);
+    }
+
+    const formattedEvents = events.map((e: any) => ({
+      id: e.ixBugEvent,
+      dt: e.dt,
+      person: e.sPerson,
+      // sVerb is the action ("Resolved (Fixed)"); evtDescription is a fuller
+      // human sentence. Prefer the description when present.
+      action: e.evtDescription || e.sVerb,
+      changes: e.sChanges ? String(e.sChanges).trim() : undefined,
+      // `s` is the plain-text comment; fall back to sText. Ignore sHtml.
+      text: (e.s ?? e.sText ?? '').toString().trim() || undefined,
+    }));
+
+    return JSON.stringify({
+      id: c.ixBug,
+      title: c.sTitle,
+      status: c.sStatus,
+      priority: c.sPriority,
+      project: c.sProject,
+      area: c.sArea,
+      milestone: c.sFixFor,
+      assignee: c.sPersonAssignedTo,
+      openedBy: c.sPersonOpenedBy,
+      opened: c.dtOpened,
+      resolved: c.dtResolved,
+      closed: c.dtClosed,
+      link: api.getCaseLink(c.ixBug),
+      eventCount: formattedEvents.length,
+      eventsTruncated: truncated || undefined,
+      events: formattedEvents,
+    });
+  } catch (error: any) {
+    return JSON.stringify({
+      error: error.message,
+    });
+  }
+}
+
+/**
  * Gets a direct link to a FogBugz case
  */
 export async function getCaseLink(api: FogBugzApi, args: any): Promise<string> {
