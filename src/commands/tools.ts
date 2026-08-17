@@ -187,7 +187,7 @@ export const searchCasesTool: Tool = {
 export const getCaseTool: Tool = {
   name: 'fogbugz_get_case',
   description:
-    'Gets a single FogBugz case with full detail, including its event/comment history (who changed status, resolution notes, and discussion). Use this to understand what a case is really about and what a prior "fix" actually did.',
+    'Gets a single FogBugz case with full detail, including its event/comment history (who changed status, resolution notes, and discussion) and any file attachments per event. Use this to understand what a case is really about and what a prior "fix" actually did. Each attachment lists a `fileName` and a `url` — pass that `url` to fogbugz_get_attachment to fetch the file contents.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -203,6 +203,40 @@ export const getCaseTool: Tool = {
       },
     },
     required: ['caseId'],
+  },
+};
+
+// Tool: Download an attachment's contents
+export const getAttachmentTool: Tool = {
+  name: 'fogbugz_get_attachment',
+  description:
+    "Downloads a FogBugz case attachment and returns its contents. Text files (html, css, js, json, xml, csv, txt, md) come back as `text`; binary files come back base64-encoded. Get the `url` (or fileName) from fogbugz_get_case first. The API token is applied server-side, so it is never exposed.",
+  inputSchema: {
+    type: 'object',
+    properties: {
+      url: {
+        type: 'string',
+        description:
+          "The attachment's relative download URL as returned by fogbugz_get_case (preferred). If omitted, provide caseId + fileName.",
+        optional: true,
+      },
+      caseId: {
+        type: 'number',
+        description: 'Case to look the attachment up on (used with fileName when url is omitted).',
+        optional: true,
+      },
+      fileName: {
+        type: 'string',
+        description: 'Attachment file name to fetch (used with caseId when url is omitted).',
+        optional: true,
+      },
+      maxBytes: {
+        type: 'number',
+        description: 'Cap on returned content size in bytes (default 200000). Content beyond this is truncated.',
+        optional: true,
+      },
+    },
+    required: [],
   },
 };
 
@@ -261,6 +295,7 @@ export const fogbugzTools = [
   listUserCasesTool,
   searchCasesTool,
   getCaseTool,
+  getAttachmentTool,
   getCaseLinkTool,
   createProjectTool,
-]; 
+];

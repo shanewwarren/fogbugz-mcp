@@ -282,6 +282,26 @@ function normalizeEvents(events: any): any[] {
 }
 
 /**
+ * Normalize an event's `rgAttachments` into a flat array of { fileName, url }.
+ * FogBugz returns either a bare array or an `{ attachment: [...] }` wrapper
+ * (and a single attachment may not be an array). `url` is the relative
+ * download path WITHOUT the token — safe to surface.
+ */
+function normalizeAttachments(event: any): { fileName: string; url: string }[] {
+  const rg = event?.rgAttachments ?? event?.attachments;
+  if (!rg) return [];
+  const raw = Array.isArray(rg) ? rg : (rg.attachment ?? rg);
+  const arr = Array.isArray(raw) ? raw : [raw];
+  return arr
+    .filter(Boolean)
+    .map((a: any) => ({
+      fileName: (a.sFileName ?? a.sFilename ?? a.fileName ?? '').toString(),
+      url: (a.sURL ?? a.sUrl ?? a.url ?? '').toString(),
+    }))
+    .filter((a: any) => a.url);
+}
+
+/**
  * Gets a single FogBugz case with its full event/comment history.
  */
 export async function getCase(api: FogBugzApi, args: any): Promise<string> {
@@ -301,17 +321,27 @@ export async function getCase(api: FogBugzApi, args: any): Promise<string> {
       events = events.slice(events.length - maxEvents);
     }
 
-    const formattedEvents = events.map((e: any) => ({
-      id: e.ixBugEvent,
-      dt: e.dt,
-      person: e.sPerson,
-      // sVerb is the action ("Resolved (Fixed)"); evtDescription is a fuller
-      // human sentence. Prefer the description when present.
-      action: e.evtDescription || e.sVerb,
-      changes: e.sChanges ? String(e.sChanges).trim() : undefined,
-      // `s` is the plain-text comment; fall back to sText. Ignore sHtml.
-      text: (e.s ?? e.sText ?? '').toString().trim() || undefined,
-    }));
+    const formattedEvents = events.map((e: any) => {
+      const attachments = normalizeAttachments(e);
+      return {
+        id: e.ixBugEvent,
+        dt: e.dt,
+        person: e.sPerson,
+        // sVerb is the action ("Resolved (Fixed)"); evtDescription is a fuller
+        // human sentence. Prefer the description when present.
+        action: e.evtDescription || e.sVerb,
+        changes: e.sChanges ? String(e.sChanges).trim() : undefined,
+        // `s` is the plain-text comment; fall back to sText. Ignore sHtml.
+        text: (e.s ?? e.sText ?? '').toString().trim() || undefined,
+        // Fetch the bytes with fogbugz_get_attachment, passing the `url`.
+        attachments: attachments.length ? attachments : undefined,
+      };
+    });
+
+    const attachmentCount = formattedEvents.reduce(
+      (n: number, e: any) => n + (e.attachments ? e.attachments.length : 0),
+      0,
+    );
 
     return JSON.stringify({
       id: c.ixBug,
@@ -329,12 +359,82 @@ export async function getCase(api: FogBugzApi, args: any): Promise<string> {
       link: api.getCaseLink(c.ixBug),
       eventCount: formattedEvents.length,
       eventsTruncated: truncated || undefined,
+      attachmentCount: attachmentCount || undefined,
       events: formattedEvents,
     });
   } catch (error: any) {
     return JSON.stringify({
       error: error.message,
     });
+  }
+}
+
+/**
+ * Downloads a single attachment and returns its content. Text-like files
+ * (html, css, js, json, xml, csv, txt, md) come back as a UTF-8 `text` field;
+ * anything else comes back base64-encoded in `base64`. Content is capped at
+ * `maxBytes` (default 200 KB) to keep responses manageable.
+ *
+ * Pass the `url` from a `fogbugz_get_case` attachment entry, or a
+ * `caseId` + `fileName` pair to have it looked up.
+ */
+export async function getAttachment(api: FogBugzApi, args: any): Promise<string> {
+  const { url, caseId, fileName, maxBytes } = args;
+  const cap = typeof maxBytes === 'number' && maxBytes > 0 ? maxBytes : 200_000;
+
+  try {
+    let targetUrl: string | undefined = url;
+    let resolvedName: string | undefined = fileName;
+
+    // Resolve by caseId + fileName when no direct url was given.
+    if (!targetUrl) {
+      if (!caseId) {
+        return JSON.stringify({
+          error: 'Provide either `url` (from a get_case attachment) or `caseId` + `fileName`.',
+        });
+      }
+      const c = await api.getCase(caseId);
+      if (!c) return JSON.stringify({ error: `Case #${caseId} not found` });
+      const all = normalizeEvents(c.events).flatMap((e: any) => normalizeAttachments(e));
+      const match = fileName
+        ? all.find((a) => a.fileName.toLowerCase() === String(fileName).toLowerCase())
+        : all.length === 1
+          ? all[0]
+          : undefined;
+      if (!match) {
+        return JSON.stringify({
+          error: fileName
+            ? `No attachment named "${fileName}" on case #${caseId}.`
+            : `Case #${caseId} has ${all.length} attachments; specify fileName.`,
+          available: all.map((a) => a.fileName),
+        });
+      }
+      targetUrl = match.url;
+      resolvedName = match.fileName;
+    }
+
+    const { contentType, data } = await api.downloadAttachment(targetUrl as string);
+    const truncated = data.length > cap;
+    const slice = truncated ? data.subarray(0, cap) : data;
+
+    const isText =
+      /htm|html|text|css|javascript|json|xml|csv|plain|markdown/i.test(contentType) ||
+      /\.(html?|css|js|mjs|json|xml|csv|txt|md|log|svg)$/i.test(resolvedName || '');
+
+    const base = {
+      fileName: resolvedName,
+      contentType: contentType || undefined,
+      bytes: data.length,
+      truncated: truncated || undefined,
+    };
+
+    return JSON.stringify(
+      isText
+        ? { ...base, encoding: 'text', text: slice.toString('utf8') }
+        : { ...base, encoding: 'base64', base64: slice.toString('base64') },
+    );
+  } catch (error: any) {
+    return JSON.stringify({ error: error.message });
   }
 }
 

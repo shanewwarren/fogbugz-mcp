@@ -13,7 +13,8 @@ import {
   EditCaseParams,
   SearchParams,
   FileAttachment,
-  CreateProjectParams
+  CreateProjectParams,
+  DownloadedAttachment
 } from './types';
 
 // Interface for the JSON payload sent to FogBugz API
@@ -241,6 +242,9 @@ export class FogBugzApi {
       'dtClosed',
       'sLatestTextSummary',
       'events',
+      // Attachments ride inside each event as `rgAttachments`, but some
+      // FogBugz versions only populate them when the column is named.
+      'rgAttachments',
     ];
     const response = await this.request<{ cases: FogBugzCase[] }>('search', {
       q: String(caseId),
@@ -249,6 +253,26 @@ export class FogBugzApi {
     });
     const cases = response.cases || [];
     return cases.length > 0 ? cases[0] : null;
+  }
+
+  /**
+   * Download an attachment's raw bytes. `sURL` is the relative FogBugz
+   * download path returned on an event's attachment (WITHOUT the token). The
+   * API token is appended here, server-side, so it never leaves this process.
+   */
+  async downloadAttachment(sURL: string): Promise<DownloadedAttachment> {
+    // FogBugz encodes the ampersands in the returned sURL as `&amp;`.
+    const rel = sURL.replace(/&amp;/g, '&').replace(/^\//, '');
+    const sep = rel.includes('?') ? '&' : '?';
+    const url = rel.includes('token=')
+      ? `${this.baseUrl}/${rel}`
+      : `${this.baseUrl}/${rel}${sep}token=${this.apiKey}`;
+
+    const response = await axios.get(url, { responseType: 'arraybuffer' });
+    return {
+      contentType: String(response.headers['content-type'] || ''),
+      data: Buffer.from(response.data),
+    };
   }
 
   /**
