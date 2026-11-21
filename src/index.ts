@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import { FogBugzApi } from './api';
 import { fogbugzTools } from './commands/tools';
 import * as handlers from './commands';
+import { R2Staging, r2ConfigFromEnv } from './staging';
 
 // Load environment variables
 dotenv.config();
@@ -15,7 +16,8 @@ const log = {
 };
 
 // Simple implementation of an MCP server that reads from stdin and writes to stdout
-async function startMcpServer(api: FogBugzApi) {
+async function startMcpServer(api: FogBugzApi, staging?: R2Staging) {
+  const tools = staging ? fogbugzTools : fogbugzTools.filter((t) => t.name !== 'fogbugz_start_wiki_upload');
   log.info('MCP Server started, waiting for requests...');
 
   // Create a readline interface to read from stdin
@@ -99,7 +101,7 @@ async function startMcpServer(api: FogBugzApi) {
           jsonrpc: "2.0",
           id,
           result: {
-            tools: fogbugzTools
+            tools
           }
         };
         console.log(JSON.stringify(response));
@@ -138,6 +140,33 @@ async function startMcpServer(api: FogBugzApi) {
             break;
           case 'fogbugz_create_project':
             content = await handlers.createProject(api, args);
+            break;
+          case 'fogbugz_list_wikis':
+            content = await handlers.listWikis(api, args);
+            break;
+          case 'fogbugz_list_wiki_articles':
+            content = await handlers.listWikiArticles(api, args);
+            break;
+          case 'fogbugz_get_wiki_article':
+            content = await handlers.getWikiArticle(api, args);
+            break;
+          case 'fogbugz_create_wiki_article':
+            content = await handlers.createWikiArticle(api, args);
+            break;
+          case 'fogbugz_edit_wiki_article':
+            content = await handlers.editWikiArticle(api, args);
+            break;
+          case 'fogbugz_list_wiki_revisions':
+            content = await handlers.listWikiRevisions(api, args);
+            break;
+          case 'fogbugz_create_wiki':
+            content = await handlers.createWiki(api, args);
+            break;
+          case 'fogbugz_start_wiki_upload':
+            content = await handlers.startWikiUpload(api, args, staging);
+            break;
+          case 'fogbugz_upload_wiki_file':
+            content = await handlers.uploadWikiFile(api, args, staging);
             break;
           default:
             throw new Error(`Unknown tool: ${name}`);
@@ -235,8 +264,9 @@ async function main() {
     const user = await api.getCurrentUser();
     log.info(`Connected to FogBugz as ${user.sPerson || user.sFullName} (${user.sEmail})`);
     
-    // Start the MCP server
-    await startMcpServer(api);
+    const r2 = r2ConfigFromEnv();
+    log.info(r2 ? `Upload staging enabled (R2 bucket ${r2.bucket})` : 'Upload staging disabled (R2_* env vars not set)');
+    await startMcpServer(api, r2 ? new R2Staging(r2) : undefined);
   } catch (error) {
     log.error('Error initializing FogBugz API:', error);
     process.exit(1);

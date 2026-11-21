@@ -287,6 +287,159 @@ export const createProjectTool: Tool = {
   },
 };
 
+const pageIdProp = {
+  type: ['number', 'string'],
+  description: 'Wiki page id: 184, "W184", or the page URL (e.g. https://x.fogbugz.com/f/page?W184).',
+};
+
+const bodyProps = {
+  body: {
+    type: 'string',
+    description:
+      'Page content. Markdown by default (GitHub-style tables, fenced code, raw HTML allowed); a leading "# Heading" becomes the page title and is removed from the body.',
+  },
+  format: {
+    type: 'string',
+    enum: ['markdown', 'html'],
+    description: 'How to interpret body. Default "markdown"; use "html" to send FogBugz HTML verbatim.',
+  },
+  tags: {
+    type: ['array', 'string'],
+    items: { type: 'string' },
+    description: 'Tags for the page, as an array or a comma-separated string.',
+  },
+};
+
+export const listWikisTool: Tool = {
+  name: 'fogbugz_list_wikis',
+  description: 'Lists FogBugz wikis (id, title, root page). Use the id with the other wiki tools.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      includeDeleted: { type: 'boolean', description: 'Include deleted wikis (default false).' },
+    },
+    required: [],
+  },
+};
+
+export const listWikiArticlesTool: Tool = {
+  name: 'fogbugz_list_wiki_articles',
+  description:
+    'Lists wiki pages (id, title, link). Omit wikiId to search every wiki, e.g. to find which wiki a page lives in or whether a title already exists.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      wikiId: { type: 'number', description: 'Only list pages in this wiki.' },
+      titleContains: { type: 'string', description: 'Case-insensitive filter on the page title.' },
+    },
+    required: [],
+  },
+};
+
+export const getWikiArticleTool: Tool = {
+  name: 'fogbugz_get_wiki_article',
+  description:
+    'Gets a wiki page: title, tags, current revision number, and its HTML body. Pass the revision to fogbugz_edit_wiki_article as expectedRevision to avoid overwriting someone else\'s edit.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      pageId: pageIdProp,
+      revision: { type: 'number', description: 'A specific past revision to fetch. Omit for the latest.' },
+    },
+    required: ['pageId'],
+  },
+};
+
+export const createWikiArticleTool: Tool = {
+  name: 'fogbugz_create_wiki_article',
+  description: 'Creates a new page in a FogBugz wiki from markdown or HTML. Returns the new page id and link.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      wikiId: { type: 'number', description: 'Wiki to add the page to (see fogbugz_list_wikis).' },
+      title: { type: 'string', description: 'Page title. Optional if a markdown body starts with "# Title".' },
+      ...bodyProps,
+    },
+    required: ['wikiId', 'body'],
+  },
+};
+
+export const editWikiArticleTool: Tool = {
+  name: 'fogbugz_edit_wiki_article',
+  description:
+    'Edits a wiki page. A new body REPLACES the whole page (FogBugz keeps the old version as a revision). Only the fields you pass change.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      pageId: pageIdProp,
+      title: { type: 'string', description: 'New page title.' },
+      ...bodyProps,
+      comment: { type: 'string', description: 'Revision comment shown in the page history.' },
+      expectedRevision: {
+        type: 'number',
+        description: 'Refuse the edit unless the page is still at this revision (from fogbugz_get_wiki_article).',
+      },
+    },
+    required: ['pageId'],
+  },
+};
+
+export const listWikiRevisionsTool: Tool = {
+  name: 'fogbugz_list_wiki_revisions',
+  description: 'Lists the revision history of a wiki page (revision number, editor id, date, comment).',
+  inputSchema: {
+    type: 'object',
+    properties: { pageId: pageIdProp },
+    required: ['pageId'],
+  },
+};
+
+export const createWikiTool: Tool = {
+  name: 'fogbugz_create_wiki',
+  description: 'Creates a new FogBugz wiki (a container of pages). Returns its id and root page.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      title: { type: 'string', description: 'Wiki title.' },
+      tagline: { type: 'string', description: 'Short HTML description shown under the title.' },
+    },
+    required: ['title'],
+  },
+};
+
+export const startWikiUploadTool: Tool = {
+  name: 'fogbugz_start_wiki_upload',
+  description:
+    'Step 1 of attaching a local image/file from any machine: returns an uploadId and a ready-to-run curl command (30-minute presigned link, no credentials needed). Run the command where the file lives, then call fogbugz_upload_wiki_file with the uploadId.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      fileName: { type: 'string', description: 'Name of the file being uploaded, e.g. "architecture.png".' },
+      contentType: { type: 'string', description: 'MIME type override. Guessed from the extension if omitted.' },
+    },
+    required: ['fileName'],
+  },
+};
+
+export const uploadWikiFileTool: Tool = {
+  name: 'fogbugz_upload_wiki_file',
+  description:
+    'Attaches an image or file to a wiki and returns its URL plus a ready-to-paste markdown snippet to embed in a page body. Give exactly one source: uploadId (from fogbugz_start_wiki_upload; preferred for local files), url (server fetches it), filePath (a path visible to the MCP server), or base64 (tiny files only).',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      wikiId: { type: 'number', description: 'Wiki to attach the file to.' },
+      uploadId: { type: 'string', description: 'uploadId from fogbugz_start_wiki_upload, after its curl command has run.' },
+      url: { type: 'string', description: 'http(s) URL the server downloads the file from.' },
+      filePath: { type: 'string', description: 'Path readable by the MCP server process.' },
+      base64: { type: 'string', description: 'File bytes, base64 (a data: URL prefix is accepted).' },
+      fileName: { type: 'string', description: 'Name to store it under. Required with base64; defaults to the source name otherwise.' },
+      contentType: { type: 'string', description: 'MIME type override, e.g. image/png. Guessed from the name if omitted.' },
+    },
+    required: ['wikiId'],
+  },
+};
+
 // All tools
 export const fogbugzTools = [
   createCaseTool,
@@ -298,4 +451,13 @@ export const fogbugzTools = [
   getAttachmentTool,
   getCaseLinkTool,
   createProjectTool,
+  listWikisTool,
+  listWikiArticlesTool,
+  getWikiArticleTool,
+  createWikiArticleTool,
+  editWikiArticleTool,
+  listWikiRevisionsTool,
+  createWikiTool,
+  startWikiUploadTool,
+  uploadWikiFileTool,
 ];

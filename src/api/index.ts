@@ -14,7 +14,14 @@ import {
   SearchParams,
   FileAttachment,
   CreateProjectParams,
-  DownloadedAttachment
+  DownloadedAttachment,
+  FogBugzWiki,
+  FogBugzWikiArticleSummary,
+  FogBugzWikiArticle,
+  FogBugzWikiRevision,
+  NewArticleParams,
+  EditArticleParams,
+  WikiFileUploadResult
 } from './types';
 
 // Interface for the JSON payload sent to FogBugz API
@@ -109,12 +116,7 @@ export class FogBugzApi {
         });
       }
 
-      if (response.data.errors && response.data.errors.length > 0) {
-        const errorMsg = response.data.errors.map((e: any) => e.message).join(', ');
-        throw new Error(`FogBugz API Error: ${errorMsg}`);
-      }
-
-      return response.data.data as T;
+      return this.unwrap<T>(response.data);
     } catch (error: any) {
       if (error.response) {
         const errorData = error.response.data;
@@ -126,6 +128,14 @@ export class FogBugzApi {
       }
       throw error;
     }
+  }
+
+  private unwrap<T>(body: any): T {
+    if (body.errors && body.errors.length > 0) {
+      const errorMsg = body.errors.map((e: any) => e.message).join(', ');
+      throw new Error(`FogBugz API Error: ${errorMsg}`);
+    }
+    return body.data as T;
   }
 
   /**
@@ -280,6 +290,89 @@ export class FogBugzApi {
    */
   getCaseLink(caseId: number): string {
     return `${this.baseUrl}/default.asp?${caseId}`;
+  }
+
+  async listWikis(): Promise<FogBugzWiki[]> {
+    const response = await this.request<{ wikis: FogBugzWiki[] }>('listWikis');
+    return response.wikis || [];
+  }
+
+  async newWiki(title: string, tagLineHTML?: string): Promise<{ ixWiki: number }> {
+    const params: Record<string, any> = { s: title };
+    if (tagLineHTML) params.sTagLineHTML = tagLineHTML;
+    const response = await this.request<{ wiki: { ixWiki: number } }>('newWiki', params);
+    return response.wiki;
+  }
+
+  async listArticles(ixWiki: number): Promise<FogBugzWikiArticleSummary[]> {
+    const response = await this.request<{ articles: FogBugzWikiArticleSummary[] }>('listArticles', { ixWiki });
+    return response.articles || [];
+  }
+
+  async viewArticle(ixWikiPage: number, nRevision?: number): Promise<FogBugzWikiArticle> {
+    const params: Record<string, any> = { ixWikiPage };
+    if (nRevision !== undefined) params.nRevision = nRevision;
+    const response = await this.request<{ wikipage: FogBugzWikiArticle }>('viewArticle', params);
+    return response.wikipage;
+  }
+
+  // Live API answers { wikipage: "" } with no id, so fall back to the headline, which FogBugz keeps unique per wiki.
+  async newArticle(params: NewArticleParams): Promise<{ ixWikiPage: number }> {
+    const response = await this.request<any>('newArticle', params);
+    const id = response?.article?.ixWikiPage ?? response?.wikipage?.ixWikiPage;
+    if (id) return { ixWikiPage: id };
+    const match = (await this.listArticles(params.ixWiki)).find((a) => a.sHeadline === params.sHeadline);
+    if (!match) throw new Error(`Created "${params.sHeadline}" but could not find its page id in wiki ${params.ixWiki}.`);
+    return { ixWikiPage: match.ixWikiPage };
+  }
+
+  // FogBugz rejects editArticle without sHeadline (error 12), so callers must send headline and body every time.
+  async editArticle(params: EditArticleParams & { sHeadline: string; sBody: string }): Promise<void> {
+    await this.request('editArticle', params);
+  }
+
+  async listRevisions(ixWikiPage: number): Promise<FogBugzWikiRevision[]> {
+    const response = await this.request<{ revisions: FogBugzWikiRevision[] }>('listRevisions', { ixWikiPage });
+    return response.revisions || [];
+  }
+
+  // The JSON endpoint only reads params from a `json` form field; plain form fields (as the docs show) get a 400.
+  async uploadWikiFile(
+    ixWiki: number,
+    fileName: string,
+    data: Buffer,
+    contentType?: string,
+  ): Promise<WikiFileUploadResult> {
+    const form = new FormData();
+    form.append('json', JSON.stringify({ cmd: 'wikiFileUpload', token: this.apiKey, ixWiki, nFileCount: 1 }));
+    form.append('File1', data, { filename: fileName, contentType: contentType || 'application/octet-stream' });
+    try {
+      const response = await axios.post(this.apiEndpoint, form, { headers: form.getHeaders() });
+      // Live API returns { upfiles: { upfile: { ixAttachment } } }, not the { sFileName, sURL } the docs show.
+      const data = this.unwrap<{ upfiles?: { upfile?: WikiFileUploadResult | WikiFileUploadResult[] } }>(response.data);
+      const upfile = data.upfiles?.upfile;
+      const first = Array.isArray(upfile) ? upfile[0] : upfile;
+      if (!first?.ixAttachment) throw new Error(`Unexpected wikiFileUpload response: ${JSON.stringify(data)}`);
+      return first;
+    } catch (error: any) {
+      if (error.response) {
+        throw new Error(`FogBugz API Error: ${error.response.status} - ${JSON.stringify(error.response.data)}`);
+      }
+      throw error;
+    }
+  }
+
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
+  getWikiAttachmentUrl(ixAttachment: number, fileName: string): string {
+    const q = new URLSearchParams({ pg: 'pgDownload', pgType: 'pgWikiAttachment', ixAttachment: String(ixAttachment), sFileName: fileName });
+    return `${this.baseUrl}/default.asp?${q.toString()}`;
+  }
+
+  getWikiPageLink(ixWikiPage: number): string {
+    return `${this.baseUrl}/f/page?W${ixWikiPage}`;
   }
 
   /**

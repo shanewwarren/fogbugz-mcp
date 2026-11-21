@@ -1,6 +1,8 @@
 import { FogBugzApi } from '../api';
 import { FileAttachment, CreateCaseParams, EditCaseParams, CreateProjectParams } from '../api/types';
 
+export * from './wiki';
+
 /**
  * MCP command implementations for FogBugz operations
  */
