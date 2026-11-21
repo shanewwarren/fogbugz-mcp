@@ -138,3 +138,50 @@ export interface FileAttachment {
   path: string;
   fieldName?: string;
 } 
+export interface FogBugzWiki {
+  ixWiki: number;
+  sWiki: string;
+  sTagLineHTML?: string;
+  ixWikiPageRoot: number;
+  ixTemplate?: number;
+  fDeleted?: boolean;
+}
+
+export interface FogBugzWikiArticleSummary {
+  ixWikiPage: number;
+  sHeadline: string;
+}
+
+export interface FogBugzWikiArticle {
+  sHeadline: string;
+  sBody: string;
+  nRevision: number;
+  tags?: { sTag: string }[];
+}
+
+export interface FogBugzWikiRevision {
+  nRevision: number;
+  ixPerson: number;
+  sTitle: string;
+  sComment: string;
+  dt: string;
+}
+
+export interface NewArticleParams {
+  ixWiki: number;
+  sHeadline: string;
+  sBody: string;
+  sTags?: string;
+}
+
+export interface EditArticleParams {
+  ixWikiPage: number;
+  sHeadline?: string;
+  sBody?: string;
+  sComment?: string;
+  sTags?: string;
+}
+
+export interface WikiFileUploadResult {
+  ixAttachment: number;
+}

@@ -15,6 +15,26 @@
       "description": "Your FogBugz API key",
       "required": true,
       "default": ""
+    },
+    "R2_ACCOUNT_ID": {
+      "description": "Cloudflare account id for wiki upload staging (optional)",
+      "required": false,
+      "default": ""
+    },
+    "R2_BUCKET": {
+      "description": "R2 bucket for staged wiki uploads (optional)",
+      "required": false,
+      "default": ""
+    },
+    "R2_ACCESS_KEY_ID": {
+      "description": "R2 access key id with Object Read & Write on R2_BUCKET (optional)",
+      "required": false,
+      "default": ""
+    },
+    "R2_SECRET_ACCESS_KEY": {
+      "description": "R2 secret access key (optional)",
+      "required": false,
+      "default": ""
     }
   },
   "capabilities": {
@@ -22,4 +42,4 @@
       "description": "Provides tools for interacting with FogBugz issue tracking system"
     }
   }
-} 
+}
